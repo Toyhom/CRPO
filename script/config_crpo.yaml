@@ -1,0 +1,109 @@
+data:
+  train_files: ./datas/CharacterTrain_RL_expand.json  # Path or identifier for training files
+  val_files: ./datas/CharacterTrain_RL_Eval.json  # Path or identifier for validation files
+  prompt_key: conversations  # Field name for input prompt in data
+  answer_key: answer  # Field name for answer in data
+  image_key: images  # Field name for image data in data
+  max_prompt_length: 8096  # Maximum length of input prompt
+  max_response_length: 1024  # Maximum length of model response
+  rollout_batch_size: 512  # Batch size for rollout phase
+  val_batch_size: 1024  # Batch size for validation phase
+  format_prompt: ./script/character_free_format.jinja  # Path to prompt formatting template
+  override_chat_template: null  # Path to override default chat template, null means no override
+  shuffle: true  # Whether to shuffle the data
+  seed: 1  # Random seed
+  max_pixels: 4194304  # Maximum pixels for images
+  min_pixels: 262144  # Minimum pixels for images
+  filter_overlong_prompts: true  # Whether to filter overlong prompts
+  role_group_path: ./datas/roles_2_class_k=7.json
+
+algorithm:
+  adv_estimator: crpo  # Policy optimization algorithm type
+  disable_kl: false  # Whether to disable KL divergence regularization
+  use_kl_loss: true  # Whether to use external KL loss
+  kl_penalty: low_var_kl  # KL penalty type
+  kl_coef: 1.0e-2  # KL loss coefficient
+  kl_target: 0.1
+  kl_horizon: 5000
+  kl_type: fixed
+  reward_scaler: false
+  reward_scaler_method: group
+  anchor_n: 1
+  wo_norm: false
+  wo_sample: false
+  wo_rlkl: false
+
+worker:
+  actor:
+    global_batch_size: 128  
+    micro_batch_size_per_device_for_update: 4
+    micro_batch_size_per_device_for_experience: 16  
+    max_grad_norm: 1.0  # Maximum norm for gradient clipping
+    padding_free: true  # Whether to use padding-free training
+    ulysses_sequence_parallel_size: 1  # Number of sequence parallel groups
+    model:
+      model_path: Qwen/Qwen2.5-7B-Instruct  # Pre-trained model path or name
+      enable_gradient_checkpointing: false  # Whether to enable gradient checkpointing to save VRAM
+      trust_remote_code: true  # Whether to trust remote code
+      freeze_vision_tower: false  # Whether to freeze vision tower parameters
+    optim:
+      lr: 2.0e-6  # Learning rate
+      weight_decay: 1.0e-2  # Weight decay coefficient
+      strategy: adamw_bf16  # Optimizer type (e.g., adamw, adamw_bf16)
+      lr_warmup_ratio: 0.05  # Learning rate warmup ratio
+    fsdp:
+      enable_full_shard: true  # Whether to enable full shard
+      enable_cpu_offload: false  # Whether to offload parameters to CPU
+      enable_rank0_init: true  # Whether to initialize on rank0
+      torch_dtype: bf16  # Data type
+      fsdp_size: 8
+    offload:
+      offload_params: false   # Whether to offload parameters to CPU, true: use more CPU memory, false: use more GPU memory
+      offload_optimizer: false   # Whether to offload optimizer to CPU, true: use more CPU memory, false: use more GPU memory
+
+  rollout:
+    max_num_batched_tokens: 40240
+    n: 7  # Number of candidates generated per input
+    anchor_n: 0
+    temperature: 1.0  # Sampling temperature
+    top_p: 0.99  # Probability threshold for nucleus sampling
+    gpu_memory_utilization: 0.8  # Upper limit of GPU memory utilization
+    enforce_eager: false  # Whether to enforce eager mode
+    enable_chunked_prefill: true  # Whether to enable chunked prefill
+    tensor_parallel_size: 1  # Number of tensor parallel groups
+    limit_images: 0  # Limit number of images per batch, 0 means no limit
+    val_override_config:
+      temperature: 0.5  # Sampling temperature during validation
+      n: 1  # Number of candidates generated per input during validation
+
+  ref:
+    ulysses_sequence_parallel_size: 1
+    fsdp:
+      enable_full_shard: true  # Whether to enable full shard
+      enable_cpu_offload: false  # Whether to offload parameters to CPU, true: use more CPU memory, false: use more GPU memory
+      enable_rank0_init: true  # Whether to initialize on rank0
+      fsdp_size: 8
+    offload:
+      offload_params: false  # true: more CPU memory; false: more GPU memory
+      # offload_optimizer: true  # true: more CPU memory; false: more GPU memory
+
+  reward:
+    reward_type: batch  # Reward type
+    reward_function: ./script/character.py:compute_score  # Reward function path and method
+
+trainer:
+  total_epochs: 1  # Total training epochs
+  max_steps: null  # Maximum training steps, null means no limit
+  project_name: qwen2_5_7B_metric  # Project name
+  experiment_name: qwen2_5_7B_metric_focus  # Experiment name
+  logger: ["console", "tensorboard"]  # Logging method
+  nnodes: 1  # Number of nodes
+  n_gpus_per_node: 8  # Number of GPUs per node
+  val_freq: 10  
+  val_before_train: true  # Whether to validate before training
+  val_only: false  # Whether to only perform validation
+  val_generations_to_log: 5  # Number of generated samples to log during validation
+  save_freq: 20  
+  save_limit: 1  # Maximum number of checkpoints to save, -1 means no limit
+  save_checkpoint_path: ./result/qwen3_8B_grpo  # Checkpoint save path, null means default path
+  load_checkpoint_path: null  # Checkpoint load path, null means no load
